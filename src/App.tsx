@@ -362,8 +362,10 @@ const checkConnection = (state: GameState, playerId: string, typeA: string, type
     const k2 = `${s.to.x},${s.to.y}`;
     if (!adj.has(k1)) adj.set(k1, []);
     if (!adj.has(k2)) adj.set(k2, []);
-    adj.get(k1)!.push(k2);
-    adj.get(k2)!.push(k1);
+    const list1 = adj.get(k1);
+    if (list1) list1.push(k2);
+    const list2 = adj.get(k2);
+    if (list2) list2.push(k1);
   });
 
   const targets = new Set(instancesB.map(l => `${l.pos.x},${l.pos.y}`));
@@ -605,7 +607,8 @@ export default function App() {
     const claimed: string[] = [];
     const keptFaceUp: string[] = [];
     for (const pid of s.faceUpPassengers) {
-      const card = PASSENGER_PERSONAS.find(x => x.id === pid)!;
+      const card = PASSENGER_PERSONAS.find(x => x.id === pid);
+      if (!card) continue;
       if (checkConnection(s, p.id, card.fromTypeId, card.toTypeId)) {
         claimed.push(pid);
         p.score += getPassengerPoints(pid);
@@ -1014,9 +1017,12 @@ export default function App() {
             </h3>
             <div className="space-y-2">
                {gameState.faceUpPassengers.map(pid => {
-                 const p = PASSENGER_PERSONAS.find(x => x.id === pid)!;
-                 const lFrom = LANDMARK_TYPES.find(l => l.id === p.fromTypeId)!;
-                 const lTo = LANDMARK_TYPES.find(l => l.id === p.toTypeId)!;
+                 const p = PASSENGER_PERSONAS.find(x => x.id === pid);
+                 if (!p) return null;
+                 const lFrom = LANDMARK_TYPES.find(l => l.id === p.fromTypeId);
+                 const lTo = LANDMARK_TYPES.find(l => l.id === p.toTypeId);
+                 if (!lFrom || !lTo) return null;
+                 
                  const pts = CONFIG.points[lTo.difficulty];
                  const completedByMe = myPlayer?.completedPassengers.includes(pid);
                  return (

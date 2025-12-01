@@ -10,7 +10,6 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from 'fireba
  * ============================================================================
  */
 
-// Your actual Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyB5f-XP0wi09xrKXIv-NphOB-JH6L_KMMo",
   authDomain: "mind-the-gap-game.firebaseapp.com",
@@ -20,11 +19,9 @@ const firebaseConfig = {
   appId: "1:774875628380:web:6c3f9eb64f58aaa52df799"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
 const appId = 'mind-the-gap';
 
 /**
@@ -245,10 +242,6 @@ const generateInitialHand = (deckRef: string[]): { hand: HandCard[], newDeck: st
 const canPlaceLandmark = (state: GameState, pos: Point, playerId: string): { valid: boolean; reason?: string } => {
   if (state.placedLandmarks.some(l => pointsEqual(l.pos, pos))) return { valid: false, reason: 'Occupied' };
   
-  // Spacing Rule: >= 3 spaces from:
-  // A) Any unconnected (floating) landmark
-  // B) Any landmark connected to ME
-  // IGNORE opponent's connected landmarks
   const tooClose = state.placedLandmarks.some(l => {
     if (getManhattanDist(l.pos, pos) >= CONFIG.landmarkSpacing) return false;
     const isFloating = l.connectedColors.length === 0;
@@ -258,8 +251,6 @@ const canPlaceLandmark = (state: GameState, pos: Point, playerId: string): { val
 
   if (tooClose) return { valid: false, reason: 'Too close to unconnected or your landmark' };
 
-  // 2. Proximity Rule (No "Place Anywhere")
-  // Landmark must be placed within Distance 3 of YOUR existing network (Tips or City Hall)
   const mySegments = state.placedSegments.filter(s => s.playerId === playerId);
   const degreeMap = new Map<string, number>();
   mySegments.forEach(s => {
@@ -271,10 +262,10 @@ const canPlaceLandmark = (state: GameState, pos: Point, playerId: string): { val
 
   let validAnchors: Point[] = [];
   const ch = state.placedLandmarks.find(l => l.typeId === 'l_cityhall');
-  if (ch) validAnchors.push(ch.pos); // Can always place near City Hall (start)
+  if (ch) validAnchors.push(ch.pos);
 
   degreeMap.forEach((deg, key) => {
-    if (deg === 1) { // Track tip
+    if (deg === 1) { 
       const [x, y] = key.split(',').map(Number);
       validAnchors.push({ x, y });
     }
@@ -301,19 +292,16 @@ const canPlaceTrack = (state: GameState, from: Point, to: Point, playerId: strin
     return { valid: false, reason: 'Must connect to your track' };
   }
 
-  // Loop/Merge Check
   const fromHasMyTrack = state.placedSegments.some(s => s.playerId === playerId && (pointsEqual(s.from, from) || pointsEqual(s.to, from)));
   const toHasMyTrack = state.placedSegments.some(s => s.playerId === playerId && (pointsEqual(s.from, to) || pointsEqual(s.to, to)));
   if (fromHasMyTrack && toHasMyTrack && !isCityHall(from) && !isCityHall(to)) {
      return { valid: false, reason: "Cannot merge/loop own tracks" };
   }
 
-  // Degree Limit (No Branching)
   const getMyDegree = (p: Point) => state.placedSegments.filter(s => s.playerId === playerId && (pointsEqual(s.from, p) || pointsEqual(s.to, p))).length;
   if (!isCityHall(from) && getMyDegree(from) >= 2) return { valid: false, reason: "No branching allowed" };
   if (!isCityHall(to) && getMyDegree(to) >= 2) return { valid: false, reason: "No branching allowed" };
 
-  // Geometry
   const checkGeometry = (anchor: Point, target: Point) => {
     const mySegs = state.placedSegments.filter(s => s.playerId === playerId && (pointsEqual(s.from, anchor) || pointsEqual(s.to, anchor)));
     if (mySegs.length === 0) return true; 
@@ -337,7 +325,6 @@ const canPlaceTrack = (state: GameState, from: Point, to: Point, playerId: strin
 
   if (!validAtFrom && !validAtTo) return { valid: false, reason: `Invalid ${cardType === 'TRACK_STRAIGHT' ? 'Straight' : 'Curve'}` };
 
-  // Landmark Capacity
   const checkLandmarkLimit = (p: Point) => {
     const lm = state.placedLandmarks.find(l => pointsEqual(l.pos, p));
     if (!lm) return { ok: true };
@@ -597,8 +584,8 @@ export default function App() {
     const p = s.players[pIdx];
     p.lastAction = actionDesc;
 
-    // Card Management
-    if (cardUsedIdx !== undefined && cardUsedIdx >= 0) {
+    // Card Management - Guard against undefined hand/index
+    if (cardUsedIdx !== undefined && cardUsedIdx >= 0 && p.hand && p.hand[cardUsedIdx]) {
       const usedType = p.hand[cardUsedIdx].type;
       p.hand.splice(cardUsedIdx, 1);
       let newCard: HandCard | null = null;
@@ -667,6 +654,9 @@ export default function App() {
     if (selectedCardIdx === null) return;
     
     const clicked = { x, y };
+    
+    // SAFETY CHECK: Ensure card exists before accessing
+    if (!p.hand || !p.hand[selectedCardIdx]) return;
     const card = p.hand[selectedCardIdx];
 
     if (card.type === 'LANDMARK' && card.landmarkTypeId) {
@@ -693,7 +683,7 @@ export default function App() {
 
       newState.placedLandmarks.push(newLandmark);
       
-      const lmName = LANDMARK_TYPES.find(l => l.id === card.landmarkTypeId)?.name;
+      const lmName = LANDMARK_TYPES.find(l => l.id === card.landmarkTypeId)?.name || 'Landmark';
       submitMove(newState, `placed ${lmName}`, selectedCardIdx);
       return;
     }
@@ -871,6 +861,11 @@ export default function App() {
     );
   }
 
+  // Define safe active card for rendering to avoid 'undefined' TS errors
+  const activeCard = (isMyTurn && myPlayer && selectedCardIdx !== null && myPlayer.hand && myPlayer.hand[selectedCardIdx]) 
+    ? myPlayer.hand[selectedCardIdx] 
+    : null;
+
   return (
     <div className="flex h-screen bg-slate-100 font-sans text-slate-800 overflow-hidden relative">
       {hoverLandmark && (
@@ -907,25 +902,23 @@ export default function App() {
               return <line key={seg.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="8" strokeLinecap="round" />;
             })}
             
-            {/* FIX FOR VERCEL BUILD: 
-              We explicitly check 'myPlayer &&' to satisfy strict TypeScript checks 
-              that myPlayer might be undefined.
-            */}
-            {isMyTurn && myPlayer && selectedNode && selectedCardIdx !== null && myPlayer.hand[selectedCardIdx].type.startsWith('TRACK') && (
+            {/* SAFE RENDERING: Only render if we have a guaranteed active card */}
+            {isMyTurn && myPlayer && selectedNode && activeCard && activeCard.type.startsWith('TRACK') && (
               <>
                 {[{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}].map((d, i) => {
                   const target = { x: selectedNode.x + d.x, y: selectedNode.y + d.y };
                   if (target.x < 0 || target.x >= CONFIG.gridSize || target.y < 0 || target.y >= CONFIG.gridSize) return null;
                   
-                  // Safe to use 'myPlayer' here because it's checked above
-                  const res = canPlaceTrack(gameState, selectedNode, target, myPlayer.id, myPlayer.hand[selectedCardIdx!].type as any);
+                  // Use activeCard.type here safely
+                  const res = canPlaceTrack(gameState, selectedNode, target, myPlayer.id, activeCard.type as any);
                   if (res.valid) return <circle key={i} cx={target.x * 40 + 20} cy={target.y * 40 + 20} r="6" className="fill-blue-400 animate-pulse opacity-50" />;
                   return null;
                 })}
               </>
             )}
             
-            {isMyTurn && myPlayer && selectedCardIdx !== null && myPlayer.hand[selectedCardIdx].type === 'LANDMARK' && hoverNode && (
+            {/* SAFE RENDERING: Only render if we have a guaranteed active card */}
+            {isMyTurn && myPlayer && activeCard && activeCard.type === 'LANDMARK' && hoverNode && (
                canPlaceLandmark(gameState, hoverNode, myPlayer.id).valid ? (
                  <rect x={hoverNode.x * 40 + 2} y={hoverNode.y * 40 + 2} width="36" height="36" className="fill-green-400 opacity-40" />
                ) : (
@@ -1006,7 +999,7 @@ export default function App() {
                 })}
               </div>
               
-              {isMyTurn && selectedCardIdx !== null && myPlayer.hand[selectedCardIdx].type === 'LANDMARK' && (
+              {isMyTurn && activeCard && activeCard.type === 'LANDMARK' && (
                 <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800 flex items-start gap-2">
                   <AlertCircle size={16} className="mt-0.5 flex-none"/>
                   <span>Must be 3 spaces from unconnected/your landmarks. Can be on tracks.</span>

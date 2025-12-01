@@ -10,7 +10,7 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from 'fireba
  * ============================================================================
  */
 
-// Your actual Firebase configuration from the screenshot
+// Your actual Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyB5f-XP0wi09xrKXIv-NphOB-JH6L_KMMo",
   authDomain: "mind-the-gap-game.firebaseapp.com",
@@ -25,8 +25,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// This ID is used for the database path (artifacts/mind-the-gap/...)
-// We keep this as 'mind-the-gap' to match the Security Rules you just set up.
 const appId = 'mind-the-gap';
 
 /**
@@ -909,19 +907,25 @@ export default function App() {
               return <line key={seg.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="8" strokeLinecap="round" />;
             })}
             
-            {isMyTurn && selectedNode && selectedCardIdx !== null && myPlayer?.hand[selectedCardIdx].type.startsWith('TRACK') && (
+            {/* FIX FOR VERCEL BUILD: 
+              We explicitly check 'myPlayer &&' to satisfy strict TypeScript checks 
+              that myPlayer might be undefined.
+            */}
+            {isMyTurn && myPlayer && selectedNode && selectedCardIdx !== null && myPlayer.hand[selectedCardIdx].type.startsWith('TRACK') && (
               <>
                 {[{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}].map((d, i) => {
                   const target = { x: selectedNode.x + d.x, y: selectedNode.y + d.y };
                   if (target.x < 0 || target.x >= CONFIG.gridSize || target.y < 0 || target.y >= CONFIG.gridSize) return null;
-                  const res = canPlaceTrack(gameState, selectedNode, target, myPlayer.id, myPlayer.hand[selectedCardIdx].type as any);
+                  
+                  // Safe to use 'myPlayer' here because it's checked above
+                  const res = canPlaceTrack(gameState, selectedNode, target, myPlayer.id, myPlayer.hand[selectedCardIdx!].type as any);
                   if (res.valid) return <circle key={i} cx={target.x * 40 + 20} cy={target.y * 40 + 20} r="6" className="fill-blue-400 animate-pulse opacity-50" />;
                   return null;
                 })}
               </>
             )}
             
-            {isMyTurn && selectedCardIdx !== null && myPlayer?.hand[selectedCardIdx].type === 'LANDMARK' && hoverNode && (
+            {isMyTurn && myPlayer && selectedCardIdx !== null && myPlayer.hand[selectedCardIdx].type === 'LANDMARK' && hoverNode && (
                canPlaceLandmark(gameState, hoverNode, myPlayer.id).valid ? (
                  <rect x={hoverNode.x * 40 + 2} y={hoverNode.y * 40 + 2} width="36" height="36" className="fill-green-400 opacity-40" />
                ) : (
